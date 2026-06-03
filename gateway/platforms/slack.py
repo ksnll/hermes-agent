@@ -824,12 +824,27 @@ class SlackAdapter(BasePlatformAdapter):
 
             # First token is the primary — used for AsyncApp / Socket Mode
             primary_token = bot_tokens[0]
-            self._app = AsyncApp(token=primary_token)
-            _apply_slack_proxy(self._app.client, proxy_url)
+            api_base_url = os.getenv("SLACK_API_BASE_URL")
+            if api_base_url:
+                logger.info(
+                    "[Slack] Using custom API base URL: %s",
+                    safe_url_for_log(api_base_url),
+                )
+                primary_client = AsyncWebClient(
+                    token=primary_token, base_url=api_base_url
+                )
+                _apply_slack_proxy(primary_client, proxy_url)
+                self._app = AsyncApp(client=primary_client)
+            else:
+                self._app = AsyncApp(token=primary_token)
+                _apply_slack_proxy(self._app.client, proxy_url)
 
             # Register each bot token and map team_id → client
             for token in bot_tokens:
-                client = AsyncWebClient(token=token)
+                client_kwargs: Dict[str, Any] = {"token": token}
+                if api_base_url:
+                    client_kwargs["base_url"] = api_base_url
+                client = AsyncWebClient(**client_kwargs)
                 _apply_slack_proxy(client, proxy_url)
                 auth_response = await client.auth_test()
                 team_id = auth_response.get("team_id", "")
